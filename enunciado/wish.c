@@ -163,7 +163,8 @@ void executeComand(char * comand, int paralel) {
 
     if (paralel == 0) {
       rc = fork();
-    } else if (rc < 0) {
+    } 
+    if (rc < 0) {
       write(STDERR_FILENO, "An error has occurred\n", strlen("An error has occurred\n"));
       return;
     }
