@@ -1,21 +1,17 @@
-#include <stdio.h>
-
-#include <stdlib.h>
-
-#include <unistd.h>
-
-#include <string.h>
-
-#include <sys/wait.h>
-
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdbool.h>
+#include <sys/wait.h>
 
 char ** path;
 int pathLenght = 0;
 
 //devuelve la cantidad de espacios consecutivos en un string a partir de un index dado
 //en caso de reverse == 1 se retrocederá en vez de avanzar en el string para contar
-int consecutiveSpaces(char * input, int startIndex, short reverse) {
+int consecutiveSpaces(char * input, int startIndex, bool reverse) {
   int spaces = 0;
   int i = startIndex;
   char actualChar = input[i];
@@ -23,12 +19,7 @@ int consecutiveSpaces(char * input, int startIndex, short reverse) {
   while ((actualChar == ' ' || actualChar == '\t' || actualChar == '\n') && (i < strlen(input) && i >= 0)) {
     spaces++;
 
-    if (reverse == 0) {
-      i++;
-    } else {
-      i--;
-    }
-
+    !reverse ? i++ : i--;
     actualChar = input[i];
   }
 
@@ -63,7 +54,7 @@ void comandPath(char * comand) {
   if (startPathIndex == -1) {
     return;
   } else {
-    spaces = consecutiveSpaces(comand, startPathIndex, 0);
+    spaces = consecutiveSpaces(comand, startPathIndex, false);
     nextLen = strlen(comand) - startPathIndex - spaces;
     subString(comand, startPathIndex + spaces, nextLen, acomulated);
   }
@@ -78,7 +69,7 @@ void comandPath(char * comand) {
       subString(acomulated, 0, startPathIndex, nextPath);
       path = (char ** ) realloc(path, (pathLenght) * sizeof(char * ));
       path[pathLenght - 1] = strdup(nextPath);
-      spaces = consecutiveSpaces(acomulated, startPathIndex, 0);
+      spaces = consecutiveSpaces(acomulated, startPathIndex, false);
       nextLen = strlen(acomulated) - startPathIndex - spaces;
       char temp[strlen(acomulated)];
       strcpy(temp, acomulated);
@@ -137,7 +128,7 @@ char ** getArguments(char * comand, int * argSize) {
     argEndIndex = (argEndPoint == NULL ? -1 : argEndPoint - acomulated);
 
     if (argEndIndex > -1) {
-      spaces = consecutiveSpaces(acomulated, argEndIndex, 0);
+      spaces = consecutiveSpaces(acomulated, argEndIndex, false);
       subString(acomulated, 0, argEndIndex, arg);
       arguments[numArgs] = strdup(arg);
       numArgs++;
@@ -162,10 +153,10 @@ char ** getArguments(char * comand, int * argSize) {
 //ejecuta todos los comandos no integrados
 void executeComand(char * comand, int paralel) {
   size_t i = 0;
-  short executed = 0;
-  short commandNoFound = 1;
+  bool executed = false;
+  bool commandNoFound = true;
 
-  while ((i < pathLenght) && (executed == 0)) {
+  while ((i < pathLenght) && (!executed)) {
     int argSize;
     char ** arguments = getArguments(comand, & argSize);
     int rc = 0;
@@ -194,26 +185,26 @@ void executeComand(char * comand, int paralel) {
       waitpid(rc, & exitStatus, 0);
 
       if (exitStatus == 0) {
-        executed = 1;
-        commandNoFound = 0;
+        executed = true;
+        commandNoFound = false;
       } else if (exitStatus != 256) {
-        commandNoFound = 0;
+        commandNoFound = false;
       }
     }
     i++;
   }
 
-  if (commandNoFound == 1) {
+  if (commandNoFound) {
     write(STDERR_FILENO, "An error has occurred\n", strlen("An error has occurred\n"));
   }
 };
 
 //segun el comando redirecciona al metodo correspondiente si es integrado o a la ejecucion general si no lo es
-int selectComand(char * comand, int paralel) {
-  int exit = 0;
+bool selectComand(char * comand, int paralel) {
+  bool exit = false;
   if (strncmp(comand, "exit", 4) == 0) {
     if (strlen(comand) < 5) {
-      exit = 1;
+      exit = true;
     } else {
       write(STDERR_FILENO, "An error has occurred\n", strlen("An error has occurred\n"));
     }
@@ -229,8 +220,8 @@ int selectComand(char * comand, int paralel) {
 
 //Se encarga de ver si el comando ingresado corresponde a un archivo o a un comando
 //ademas verifica si hay redireccion de la salida para ejecutarla
-int executeFileOrComand(char * comand, int paralel) {
-  int exitConsole = 0;
+bool executeFileOrComand(char * comand, int paralel) {
+  bool exitConsole = false;
   char * initCommand;
   char * redirectFile;
 
@@ -247,7 +238,7 @@ int executeFileOrComand(char * comand, int paralel) {
     return exitConsole;
   } else {
     //si hay redireccion separa el comando del archivo destino
-    int spaces = consecutiveSpaces(comand, redirectIndex - 1, 1);
+    int spaces = consecutiveSpaces(comand, redirectIndex - 1, true);
 
     //error si no hay comando
     if (redirectIndex - spaces == 0) {
@@ -257,7 +248,7 @@ int executeFileOrComand(char * comand, int paralel) {
 
     initCommand = (char * ) malloc(redirectIndex - spaces);
     subString(comand, 0, redirectIndex - spaces, initCommand);
-    spaces = consecutiveSpaces(comand, redirectIndex + 1, 0);
+    spaces = consecutiveSpaces(comand, redirectIndex + 1, false);
     int fileNameLen = strlen(comand) - redirectIndex - spaces - 1;
 
     //error si no hay archivo destino
@@ -344,8 +335,8 @@ int executeFileOrComand(char * comand, int paralel) {
 }
 
 //verifica si hay un llamado que implique paralelismo
-int execute(char * comand) {
-  int exitBash = 0;
+bool execute(char * comand) {
+  bool exitBash = false;
   char * paralelPoint = strchr(comand, '&');
   int paralelIndex = paralelPoint == NULL ? -1 : paralelPoint - comand; //verifica paralelismo  
 
@@ -377,7 +368,7 @@ int execute(char * comand) {
       paralelIndex = (paralelPoint == NULL ? -1 : paralelPoint - acomulated);
 
       if (paralelIndex != -1) {
-        spaces = consecutiveSpaces(acomulated, paralelIndex - 1, 1); //Control de espacios " "
+        spaces = consecutiveSpaces(acomulated, paralelIndex - 1, true); //Control de espacios " "
         comandLen = paralelIndex - spaces;
       } else {
         comandLen = acomulatedLen;
@@ -389,7 +380,7 @@ int execute(char * comand) {
       //Control de espacios consecutivos
       if (paralelIndex != -1) {
         strcpy(temp, acomulated);
-        spaces = consecutiveSpaces(acomulated, paralelIndex + 1, 0);
+        spaces = consecutiveSpaces(acomulated, paralelIndex + 1, false);
         acomulatedLen = acomulatedLen - paralelIndex - spaces - 1;
         subString(temp, paralelIndex + spaces + 1, acomulatedLen, acomulated);
       }
@@ -424,7 +415,7 @@ int main(int argc, char
   pathLenght++;
 
   //señal para salir del shell
-  short exitBash = 0;
+  bool exitBash = false;
 
   //modo bash
   if (argc < 2) {
@@ -444,7 +435,7 @@ int main(int argc, char
       } else if (readBytes > 1) {
         exitBash = execute(realComand);
       }
-    } while (exitBash == 0);
+    } while (!exitBash);
   }
 
   //modo interactivo
@@ -461,7 +452,7 @@ int main(int argc, char
       size_t len = 0;
       ssize_t read;
 
-      while (((read = getline( & line, & len, file)) != -1) && (exitBash == 0)) {
+      while (((read = getline( & line, & len, file)) != -1) && (!exitBash)) {
         //se omite el simbolo # que es usado como comentario
         if (strchr(line, '#') != NULL) {
           continue;
@@ -471,7 +462,7 @@ int main(int argc, char
         spaceIndex = (spacePoint == NULL ? -1 : spacePoint - line);
 
         if (spaceIndex == 0) {
-          spaces = consecutiveSpaces(line, spaceIndex, 0);
+          spaces = consecutiveSpaces(line, spaceIndex, false);
         }
 
         char realLine[read - spaces];
